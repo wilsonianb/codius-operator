@@ -3,5 +3,11 @@ kind: Podius
 metadata:
   name: example-podius
 spec:
-  # Add fields here
-  size: 3
+  containers:
+  - name: busybox
+    image: busybox
+    command: ["sleep", "3600"]
+    env:
+    - name: CODIUS_PUBLIC_URI
+      value: https://c8s.example.com
+    tty: true
