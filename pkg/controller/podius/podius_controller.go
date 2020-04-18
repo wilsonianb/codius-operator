@@ -2,6 +2,7 @@ package podius
 
 import (
 	"context"
+	"os"
 
 	codiusv1 "github.com/wilsonianb/codius-operator/pkg/apis/codius/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -134,6 +135,33 @@ func newPodForCR(cr *codiusv1.Podius) *corev1.Pod {
 	labels := map[string]string{
 		"app": cr.Name,
 	}
+	containers := make([]corev1.Container, len(cr.Spec.Containers))
+	for i, container := range cr.Spec.Containers {
+		envVars := make([]corev1.EnvVar, len(container.Env))
+		for j, env := range container.Env {
+			envVars[j] = corev1.EnvVar{
+				Name: env.Name,
+				Value: env.Value,
+			}
+		}
+		containers[i] = corev1.Container{
+			Name: container.Name,
+			Image: container.Image,
+			Command: container.Command,
+			Args: container.Args,
+			WorkingDir: container.WorkingDir,
+			Env: envVars,
+		}
+	}
+
+	automountServiceAccountToken := false
+
+	var pRuntimeClassName *string
+	runtimeClassName := os.Getenv("RUNTIME_CLASS_NAME")
+	if runtimeClassName != "" {
+		pRuntimeClassName = &runtimeClassName
+	}
+
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Name + "-pod",
@@ -141,13 +169,10 @@ func newPodForCR(cr *codiusv1.Podius) *corev1.Pod {
 			Labels:    labels,
 		},
 		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
-				},
-			},
+			Containers: containers,
+			DNSPolicy: corev1.DNSDefault,
+			AutomountServiceAccountToken: &automountServiceAccountToken,
+			RuntimeClassName: pRuntimeClassName,
 		},
 	}
 }

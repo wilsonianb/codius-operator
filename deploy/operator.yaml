@@ -31,3 +31,5 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "codius-operator"
+            - name: RUNTIME_CLASS_NAME
+              value: "kata-qemu"
