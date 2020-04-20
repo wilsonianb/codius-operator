@@ -63,6 +63,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	err = c.Watch(&source.Kind{Type: &corev1.Service{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &codiusv1.Podius{},
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -102,8 +110,8 @@ func (r *ReconcilePodius) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	// Check if the deployment already exists, if not create a new one
-	found := &appsv1.Deployment{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
+	deployment := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
 	if err != nil && errors.IsNotFound(err) {
 		dep := deploymentForCR(instance)
 		// Set Podius instance as the owner and controller
@@ -124,16 +132,35 @@ func (r *ReconcilePodius) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, err
 	}
 
-	// Deployment already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Deployment already exists", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
+	// Check if the Service already exists, if not create a new one
+	service := &corev1.Service{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, service)
+	if err != nil && errors.IsNotFound(err) {
+		ser := serviceForCR(instance)
+		// Set Podius instance as the owner and controller
+		if err := controllerutil.SetControllerReference(instance, ser, r.scheme); err != nil {
+			return reconcile.Result{}, err
+		}
+		reqLogger.Info("Creating a new Service.", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+		err = r.client.Create(context.TODO(), ser)
+		if err != nil {
+			reqLogger.Error(err, "Failed to create new Service.", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	} else if err != nil {
+		reqLogger.Error(err, "Failed to get Service.")
+		return reconcile.Result{}, err
+	}
+
+	// Deployment and Service already exists - don't requeue
+	reqLogger.Info("Skip reconcile: Deployment and Service already exist", "Namespace", deployment.Namespace, "Deployment.Name", deployment.Name, "Service.Name", service.Name)
 	return reconcile.Result{}, nil
 }
 
 // deploymentForCR returns a podius Deployment object
 func deploymentForCR(cr *codiusv1.Podius) *appsv1.Deployment {
-	labels := map[string]string{
-		"app": cr.Name,
-	}
+	labels := labelsForCR(cr)
 	containers := make([]corev1.Container, len(cr.Spec.Containers))
 	for i, container := range cr.Spec.Containers {
 		envVars := make([]corev1.EnvVar, len(container.Env))
@@ -184,4 +211,29 @@ func deploymentForCR(cr *codiusv1.Podius) *appsv1.Deployment {
 			},
 		},
 	}
+}
+
+func serviceForCR(cr *codiusv1.Podius) *corev1.Service {
+	labels := labelsForCR(cr)
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cr.Name,
+			Namespace: cr.Namespace,
+			Labels:    labels,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: labels,
+			Ports: []corev1.ServicePort{
+				{
+					Port: cr.Spec.Port,
+				},
+			},
+		},
+	}
+}
+
+// labelsForCR returns the labels for selecting the resources
+// belonging to the given podius CR name.
+func labelsForCR(cr *codiusv1.Podius) map[string]string {
+	return map[string]string{"app": cr.Name}
 }

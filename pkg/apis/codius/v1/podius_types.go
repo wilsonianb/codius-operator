@@ -76,6 +76,12 @@ type PodiusSpec struct {
 	// +patchMergeKey=name
 	// +patchStrategy=merge
 	Containers []Container `json:"containers" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,1,rep,name=containers"`
+
+    // Port listening for http requests.
+    // Defaults to 80
+    // +kubebuilder:default:=80
+    // +optional
+    Port int32 `json:"port,omitempty" protobuf:"varint,2,opt,name=Port"`
 }
 
 // PodiusStatus defines the observed state of Podius
