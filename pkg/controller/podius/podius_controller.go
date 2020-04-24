@@ -165,9 +165,21 @@ func deploymentForCR(cr *codiusv1.Podius) *appsv1.Deployment {
 	for i, container := range cr.Spec.Containers {
 		envVars := make([]corev1.EnvVar, len(container.Env))
 		for j, env := range container.Env {
+			var valueFrom *corev1.EnvVarSource
+			if env.ValueFrom != nil {
+				valueFrom = &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: env.ValueFrom.SecretKeyRef.Name,
+						},
+						Key: env.ValueFrom.SecretKeyRef.Key,
+					},
+				}
+			}
 			envVars[j] = corev1.EnvVar{
 				Name: env.Name,
 				Value: env.Value,
+				ValueFrom: valueFrom,
 			}
 		}
 		containers[i] = corev1.Container{
