@@ -78,35 +78,46 @@ spec:
                               input string will be unchanged. The $(VAR_NAME) syntax
                               can be escaped with a double $$, ie: $$(VAR_NAME). Escaped
                               references will never be expanded, regardless of whether
-                              the variable exists or not. Defaults to "".'
+                              the variable exists or not.'
                             type: string
-                          valueFrom:
-                            description: Source for the environment variable's value.
-                              Cannot be used if value is not empty.
-                            properties:
-                              secretKeyRef:
-                                description: Selects a key of a secret in the pod's
-                                  namespace
-                                properties:
-                                  key:
-                                    description: The key of the secret to select from.  Must
-                                      be a valid secret key.
-                                    type: string
-                                  name:
-                                    description: 'Name of the referent. More info:
-                                      https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                      TODO: Add other useful fields. apiVersion, kind,
-                                      uid?'
-                                    type: string
-                                required:
-                                - key
-                                type: object
-                            required:
-                            - secretKeyRef
-                            type: object
                         required:
                         - name
                         type: object
+                      type: array
+                    envFrom:
+                      description: List of sources to populate environment variables
+                        in the container. The keys defined within a source must be
+                        a C_IDENTIFIER. All invalid keys will be reported as an event
+                        when the container is starting. When a key exists in multiple
+                        sources, the value associated with the last source will take
+                        precedence. Values defined by an Env with a duplicate key
+                        will take precedence. Cannot be updated. Currently only sources
+                        from secret of same name whose values must match the specified
+                        hash.
+                      items:
+                        properties:
+                          secretRef:
+                            description: The Secret to select from
+                            properties:
+                              algorithm:
+                                default: sha256
+                                description: Algorithm for encoding of the secret's
+                                  hash for public inclusion in the spec Defaults to
+                                  sha256
+                                enum:
+                                - sha256
+                                type: string
+                              hash:
+                                description: Hex-encoded hash of secret's values using
+                                  the specified algorithm
+                                type: string
+                            required:
+                            - hash
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      maxItems: 1
                       type: array
                     image:
                       description: 'Docker image name. More info: https://kubernetes.io/docs/concepts/containers/images'

@@ -2,6 +2,9 @@ package podius
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 
 	codiusv1 "github.com/wilsonianb/codius-operator/pkg/apis/codius/v1"
@@ -113,7 +116,7 @@ func (r *ReconcilePodius) Reconcile(request reconcile.Request) (reconcile.Result
 	deployment := &appsv1.Deployment{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, deployment)
 	if err != nil && errors.IsNotFound(err) {
-		dep := deploymentForCR(instance)
+		dep := r.deploymentForCR(instance)
 		// Set Podius instance as the owner and controller
 		if err := controllerutil.SetControllerReference(instance, dep, r.scheme); err != nil {
 			return reconcile.Result{}, err
@@ -159,27 +162,28 @@ func (r *ReconcilePodius) Reconcile(request reconcile.Request) (reconcile.Result
 }
 
 // deploymentForCR returns a podius Deployment object
-func deploymentForCR(cr *codiusv1.Podius) *appsv1.Deployment {
+func (r *ReconcilePodius) deploymentForCR(cr *codiusv1.Podius) *appsv1.Deployment {
 	labels := labelsForCR(cr)
 	containers := make([]corev1.Container, len(cr.Spec.Containers))
 	for i, container := range cr.Spec.Containers {
 		envVars := make([]corev1.EnvVar, len(container.Env))
 		for j, env := range container.Env {
-			var valueFrom *corev1.EnvVarSource
-			if env.ValueFrom != nil {
-				valueFrom = &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: env.ValueFrom.SecretKeyRef.Name,
-						},
-						Key: env.ValueFrom.SecretKeyRef.Key,
-					},
-				}
-			}
 			envVars[j] = corev1.EnvVar{
 				Name: env.Name,
 				Value: env.Value,
-				ValueFrom: valueFrom,
+			}
+		}
+		envFrom := make([]corev1.EnvFromSource, len(container.EnvFrom))
+		for j, source := range container.EnvFrom {
+			// verify secret hash
+			r.verifySecret(cr, source.SecretRef.Hash)
+			envFrom[j] = corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						//Name: cr.Name,
+						Name: "mysecret",
+					},
+				},
 			}
 		}
 		containers[i] = corev1.Container{
@@ -189,6 +193,7 @@ func deploymentForCR(cr *codiusv1.Podius) *appsv1.Deployment {
 			Args: container.Args,
 			WorkingDir: container.WorkingDir,
 			Env: envVars,
+			EnvFrom: envFrom,
 		}
 	}
 
@@ -248,4 +253,24 @@ func serviceForCR(cr *codiusv1.Podius) *corev1.Service {
 // belonging to the given podius CR name.
 func labelsForCR(cr *codiusv1.Podius) map[string]string {
 	return map[string]string{"app": cr.Name}
+}
+
+func (r *ReconcilePodius) verifySecret(cr *codiusv1.Podius, hash string) error {
+	secret := &corev1.Secret{}
+	//err = r.client.Get(context.TODO(), types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}, secret)
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: "mysecret", Namespace: cr.Namespace}, secret)
+	if err != nil {
+		return err
+	}
+	secretBytes, err := json.Marshal(secret.Data)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(secretBytes)
+	reqLogger := log.WithValues("Request.Namespace", cr.Namespace, "Request.Name", cr.Name)
+	reqLogger.Info("secret data", hex.EncodeToString(sum[:]))
+	if hex.EncodeToString(sum[:]) != hash {
+		return errors.NewInvalid(cr.Kind, "invalid secret hash")
+	}
+	return nil
 }

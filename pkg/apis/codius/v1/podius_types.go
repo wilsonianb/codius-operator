@@ -1,28 +1,31 @@
 package v1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-type SecretKeySelector struct {
-	// The name of the secret in the pod's namespace to select from.
-	corev1.LocalObjectReference `json:",inline" protobuf:"bytes,1,opt,name=localObjectReference"`
-	// The key of the secret to select from.  Must be a valid secret key.
-	Key string `json:"key" protobuf:"bytes,2,opt,name=key"`
+type SecretEnvSource struct {
+	// Algorithm for encoding of the secret's hash for public inclusion in the spec
+	// Defaults to sha256
+	// +kubebuilder:default:=sha256
+	// +kubebuilder:validation:Enum=sha256
+	// +optional
+	Algorithm string `json:"algorithm,omitempty"`
+	// Hex-encoded hash of secret's values using the specified algorithm
+	Hash string `json:"hash"`
 }
 
-type EnvVarSource struct {
-	// Selects a key of a secret in the pod's namespace
-	SecretKeyRef SecretKeySelector `json:"secretKeyRef" protobuf:"bytes,1,opt,name=secretKeyRef"`
+type EnvFromSource struct {
+    // The Secret to select from
+    SecretRef *SecretEnvSource `json:"secretRef"`
 }
 
 type EnvVar struct {
 	// Name of the environment variable. Must be a C_IDENTIFIER.
-	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+	Name string `json:"name"`
 
 	// Variable references $(VAR_NAME) are expanded
 	// using the previous defined environment variables in the container and
@@ -31,22 +34,17 @@ type EnvVar struct {
 	// syntax can be escaped with a double $$, ie: $$(VAR_NAME). Escaped
 	// references will never be expanded, regardless of whether the variable
 	// exists or not.
-	// Defaults to "".
-	// +optional
-	Value string `json:"value,omitempty" protobuf:"bytes,2,opt,name=value"`
-	// Source for the environment variable's value. Cannot be used if value is not empty.
-	// +optional
-	ValueFrom *EnvVarSource `json:"valueFrom,omitempty" protobuf:"bytes,3,opt,name=valueFrom"`
+	Value string `json:"value,omitempty"`
 }
 
 type Container struct {
 	// Name of the container specified as a DNS_LABEL.
 	// Each container in a pod must have a unique name (DNS_LABEL).
 	// Cannot be updated.
-	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+	Name string `json:"name"`
 	// Docker image name.
 	// More info: https://kubernetes.io/docs/concepts/containers/images
-	Image string `json:"image" protobuf:"bytes,2,opt,name=image"`
+	Image string `json:"image"`
 	// Entrypoint array. Not executed within a shell.
 	// The docker image's ENTRYPOINT is used if this is not provided.
 	// Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
@@ -56,7 +54,7 @@ type Container struct {
 	// Cannot be updated.
 	// More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
 	// +optional
-	Command []string `json:"command,omitempty" protobuf:"bytes,3,rep,name=command"`
+	Command []string `json:"command,omitempty"`
 	// Arguments to the entrypoint.
 	// The docker image's CMD is used if this is not provided.
 	// Variable references $(VAR_NAME) are expanded using the container's environment. If a variable
@@ -66,19 +64,29 @@ type Container struct {
 	// Cannot be updated.
 	// More info: https://kubernetes.io/docs/tasks/inject-data-application/define-command-argument-container/#running-a-command-in-a-shell
 	// +optional
-	Args []string `json:"args,omitempty" protobuf:"bytes,4,rep,name=args"`
+	Args []string `json:"args,omitempty"`
 	// Container's working directory.
 	// If not specified, the container runtime's default will be used, which
 	// might be configured in the container image.
 	// Cannot be updated.
 	// +optional
-	WorkingDir string `json:"workingDir,omitempty" protobuf:"bytes,5,opt,name=workingDir"`
+	WorkingDir string `json:"workingDir,omitempty"`
+	// List of sources to populate environment variables in the container.
+	// The keys defined within a source must be a C_IDENTIFIER. All invalid keys
+	// will be reported as an event when the container is starting. When a key exists in multiple
+	// sources, the value associated with the last source will take precedence.
+	// Values defined by an Env with a duplicate key will take precedence.
+	// Cannot be updated.
+	// Currently only sources from secret of same name whose values must match the specified hash.
+	// +kubebuilder:validation:MaxItems:=1
+	// +optional
+	EnvFrom []EnvFromSource `json:"envFrom,omitempty"`
 	// List of environment variables to set in the container.
 	// Cannot be updated.
 	// +optional
 	// +patchMergeKey=name
 	// +patchStrategy=merge
-	Env []EnvVar `json:"env,omitempty" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,6,rep,name=env"`
+	Env []EnvVar `json:"env,omitempty" patchStrategy:"merge" patchMergeKey:"name"`
 }
 
 // PodiusSpec defines the desired state of Podius
